@@ -1,0 +1,49 @@
+{
+  "characters": [
+    {
+      "id": "eb1f3eb2-f46f-4902-bab0-1dae35b5f8c4",
+      "nome": "Novo Protagonista",
+      "conceito": "",
+      "nivel": 1,
+      "xp": 0,
+      "archetype": "Expert",
+      "talents": [
+        "Lógico",
+        "Estrategista",
+        "Focado"
+      ],
+      "occupation": "Informista",
+      "skill": "Biometria Visual",
+      "selectedMod": "Scanner Social",
+      "selectedModDescription": "Você também descobre a relação do alvo com facções, corporações ou contatos relevantes.",
+      "items": [
+        "Arma de Fogo",
+        "Proteção Média"
+      ],
+      "contacts": [
+        "Militar ou Criminoso"
+      ],
+      "notes": "",
+      "attributes": {
+        "fisico": 1,
+        "esperteza": 2,
+        "sagacidade": 3
+      },
+      "subattributes": {
+        "potencia": 0,
+        "agilidade": 1,
+        "vigor": 1,
+        "informacoes": 1,
+        "tecnologia": 1,
+        "tecnica": 1,
+        "percepcao": 0,
+        "labia": 0,
+        "intuicao": 1
+      },
+      "currentBp": 8,
+      "currentCe": 6,
+      "gambiarraPool": 3
+    }
+  ],
+  "rolls": []
+}

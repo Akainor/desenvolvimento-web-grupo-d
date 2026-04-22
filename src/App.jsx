@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { archetypes, occupations, contactTypes, relationCosts, steps, progressionByLevel } from './data/coloniaData';
+import { api } from './lib/api';
 
 const ATTRIBUTE_PRESETS = [
   { label: '3 / 2 / 1', values: { fisico: 3, esperteza: 2, sagacidade: 1 } },
@@ -18,7 +19,6 @@ const SUBATTRIBUTE_LABELS = {
   intuicao: 'Intuição',
 };
 
-const STORAGE_KEY = 'colonia-react-demo';
 
 const emptyCharacter = () => ({
   id: crypto.randomUUID(),
@@ -83,33 +83,6 @@ function buildCharacter(partial) {
   };
 }
 
-function loadCharacters() {
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    if (!raw) return [];
-    return JSON.parse(raw);
-  } catch {
-    return [];
-  }
-}
-
-function rollDice(expression) {
-  const normalized = expression.replace(/\s+/g, '').toLowerCase();
-  const match = normalized.match(/^(\d+)d6([+-]\d+)?$/);
-  if (!match) {
-    return { error: 'Use o formato Xd6+Y. Exemplo: 4d6+2' };
-  }
-  const count = Number(match[1]);
-  const modifier = Number(match[2] || 0);
-  if (count < 1 || count > 30) {
-    return { error: 'Use entre 1 e 30 dados.' };
-  }
-  const dice = Array.from({ length: count }, () => 1 + Math.floor(Math.random() * 6));
-  const successes = dice.filter((value) => value >= 4).length;
-  const disasters = dice.filter((value) => value === 1).length;
-  const total = dice.reduce((sum, value) => sum + value, 0) + modifier;
-  return { dice, successes, disasters, modifier, total };
-}
 
 function getLevelOneSkills(occupationName) {
   return occupations[occupationName].skills.filter((item) => item.level === 1);
@@ -175,7 +148,7 @@ function LandingPage({ onCreate, onNavigate, characterCount }) {
       </section>
 
       <section className="stats-strip card">
-        <div><span>{characterCount}</span><small>fichas no armazenamento local</small></div>
+        <div><span>{characterCount}</span><small>fichas salvas no backend</small></div>
         <div><span>3</span><small>atributos base</small></div>
         <div><span>9</span><small>subatributos</small></div>
         <div><span>10</span><small>ocupações iniciais no app</small></div>
@@ -606,12 +579,27 @@ function Sheet({ character, setCharacter, onNavigate }) {
 function DicePage({ history, setHistory }) {
   const [expression, setExpression] = useState('4d6');
   const [result, setResult] = useState(null);
+  const [isRolling, setIsRolling] = useState(false);
 
-  const handleRoll = () => {
-    const rolled = rollDice(expression);
-    setResult(rolled);
-    if (!rolled.error) {
-      setHistory((previous) => [{ id: crypto.randomUUID(), expression, ...rolled }, ...previous].slice(0, 8));
+  const handleRoll = async () => {
+    setIsRolling(true);
+    try {
+      const rolled = await api.rollDice(expression);
+      setResult(rolled);
+      setHistory((previous) => [rolled, ...previous.filter((item) => item.id !== rolled.id)].slice(0, 8));
+    } catch (error) {
+      setResult({ error: error.message });
+    } finally {
+      setIsRolling(false);
+    }
+  };
+
+  const clearHistory = async () => {
+    try {
+      await api.clearRolls();
+      setHistory([]);
+    } catch (error) {
+      setResult({ error: error.message });
     }
   };
 
@@ -624,7 +612,7 @@ function DicePage({ history, setHistory }) {
           <label className="field-label">Rolagem customizada</label>
           <div className="inline-roll">
             <input className="text-input" value={expression} onChange={(e) => setExpression(e.target.value)} />
-            <button className="ghost-btn" onClick={handleRoll}>ROLL</button>
+            <button className="ghost-btn" onClick={handleRoll} disabled={isRolling}>{isRolling ? '...' : 'ROLL'}</button>
           </div>
           <div className="rule-box"><strong>Dica:</strong> use sempre Xd6+Y. Em Colônia, sucessos normais são resultados 4, 5 ou 6.</div>
         </section>
@@ -643,7 +631,7 @@ function DicePage({ history, setHistory }) {
       </div>
 
       <section className="card history-card">
-        <div className="history-head"><h3>Histórico recente</h3><button className="ghost-btn" onClick={() => setHistory([])}>Limpar histórico</button></div>
+        <div className="history-head"><h3>Histórico recente</h3><button className="ghost-btn" onClick={clearHistory}>Limpar histórico</button></div>
         {history.length === 0 ? <p>Nenhuma rolagem ainda.</p> : history.map((item, index) => (
           <div key={item.id} className="history-row">
             <span>#{String(index + 1).padStart(3, '0')}</span>
@@ -663,18 +651,29 @@ export default function App() {
   const [activeId, setActiveId] = useState(null);
   const [draft, setDraft] = useState(buildCharacter(emptyCharacter()));
   const [history, setHistory] = useState([]);
+  const [isBooting, setIsBooting] = useState(true);
 
   useEffect(() => {
-    const saved = loadCharacters();
-    if (saved.length) {
-      setCharacters(saved);
-      setActiveId(saved[0].id);
+    async function bootstrap() {
+      try {
+        const [savedCharacters, savedRolls] = await Promise.all([
+          api.getCharacters(),
+          api.getRolls(),
+        ]);
+        setCharacters(savedCharacters || []);
+        setHistory(savedRolls || []);
+        if (savedCharacters?.length) {
+          setActiveId(savedCharacters[0].id);
+        }
+      } catch (error) {
+        console.error(error);
+      } finally {
+        setIsBooting(false);
+      }
     }
-  }, []);
 
-  useEffect(() => {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(characters));
-  }, [characters]);
+    bootstrap();
+  }, []);
 
   const activeCharacter = useMemo(() => characters.find((item) => item.id === activeId) || null, [characters, activeId]);
 
@@ -695,29 +694,46 @@ export default function App() {
     setCurrentPage('creator');
   };
 
-  const handleSave = () => {
+  const handleSave = async () => {
     const completed = buildCharacter({
       ...draft,
       nivel: 1,
       items: draft.items.length ? draft.items : occupations[draft.occupation].items,
       contacts: draft.contacts.length ? draft.contacts : occupations[draft.occupation].contacts,
     });
-    setCharacters((previous) => {
-      const exists = previous.some((item) => item.id === completed.id);
-      if (exists) return previous.map((item) => item.id === completed.id ? completed : item);
-      return [completed, ...previous];
-    });
-    setActiveId(completed.id);
-    setCurrentPage('sheet');
+
+    try {
+      const exists = characters.some((item) => item.id === completed.id);
+      const saved = exists ? await api.updateCharacter(completed) : await api.saveCharacter(completed);
+      setCharacters((previous) => {
+        if (exists) return previous.map((item) => item.id === saved.id ? saved : item);
+        return [saved, ...previous];
+      });
+      setActiveId(saved.id);
+      setCurrentPage('sheet');
+    } catch (error) {
+      console.error(error);
+      window.alert(error.message);
+    }
   };
 
-  const setActiveCharacter = (updater) => {
-    setCharacters((previous) => previous.map((item) => {
-      if (item.id !== activeId) return item;
-      const updated = typeof updater === 'function' ? updater(item) : updater;
-      return buildCharacter(updated);
-    }));
+  const setActiveCharacter = async (updater) => {
+    const current = characters.find((item) => item.id === activeId);
+    if (!current) return;
+
+    const next = buildCharacter(typeof updater === 'function' ? updater(current) : updater);
+    setCharacters((previous) => previous.map((item) => item.id === activeId ? next : item));
+
+    try {
+      await api.updateCharacter(next);
+    } catch (error) {
+      console.error(error);
+    }
   };
+
+  if (isBooting) {
+    return <div className="app-shell"><div className="page"><div className="empty-state card"><h2>Carregando dados do servidor...</h2></div></div></div>;
+  }
 
   return (
     <div className="app-shell">
