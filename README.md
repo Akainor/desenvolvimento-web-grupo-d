@@ -1,7 +1,7 @@
 # Colônia RPG - React + Express
 
 Este projeto usa:
-- **React** no frontend
+- **React + Vite** no frontend
 - **Express** no backend
 - persistência simples em `server/data/db.json`
 

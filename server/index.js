@@ -134,7 +134,7 @@ app.delete('/api/rolls', (_req, res) => {
 });
 
 if (process.env.NODE_ENV === 'production') {
-  const clientBuildPath = path.join(__dirname, '..', 'build');
+  const clientBuildPath = path.join(__dirname, '..', 'dist');
   app.use(express.static(clientBuildPath));
   app.get('*', (_req, res) => {
     res.sendFile(path.join(clientBuildPath, 'index.html'));
